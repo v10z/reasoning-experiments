@@ -325,4 +325,4 @@ End-of-session consolidation:
 
 ## License
 
-MIT
+Apache 2.0
