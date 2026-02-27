@@ -57,29 +57,75 @@ Memory entries are automatically routed by importance: high (>=0.7) to long-term
 | `recall` | Recall relevant memories with associative boosting |
 | `benchmark` | Run benchmark suite comparing strategies vs baseline |
 
-## Quick Start
+## Quick Start with Claude Code
+
+### 1. Install and build
 
 ```bash
-# Install
+git clone https://github.com/v10z/reasoning-experiments.git
+cd reasoning-experiments
 npm install
-
-# Run tests (295 tests across 21 suites)
-npm test
-
-# Build
 npm run build
+```
 
-# Start MCP server
-npm start
+### 2. Add the MCP server to Claude Code
+
+```bash
+claude mcp add reasoning-memory node /absolute/path/to/reasoning-experiments/dist/index.js
+```
+
+Or add it manually to your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "reasoning-memory": {
+      "command": "node",
+      "args": ["/absolute/path/to/reasoning-experiments/dist/index.js"]
+    }
+  }
+}
+```
+
+### 3. Use it
+
+Once the MCP server is registered, Claude Code gains five new tools. Just ask naturally — Claude will pick the right tool automatically.
+
+**Structured reasoning** (auto-selects the best strategy):
+```
+"Reason through how to design a rate limiter for our API"
+→ Claude calls `reason` → FractalRecursion decomposes the problem
+
+"This function is throwing a null reference error, help me debug it"
+→ Claude calls `reason` → SimulatedAnnealing explores hypotheses
+```
+
+**Multi-strategy composition** (deeper analysis):
+```
+"Use the debug-verify preset to analyze this flaky test"
+→ Claude calls `compose` → SimulatedAnnealing finds the fix, AdversarialSelfPlay stress-tests it
+
+"Compose a deep analysis of whether we should use Redis or Memcached"
+→ Claude calls `compose` → 3-strategy pipeline: decompose → debate → verify
+```
+
+**Persistent memory** (across sessions):
+```
+"Remember that the payments service requires idempotency keys"
+→ Claude calls `remember` → stored in long-term memory (importance 0.5+)
+
+"What do I know about the payments service?"
+→ Claude calls `recall` → retrieves related memories with Hebbian boosting
+```
+
+### 4. Verify
+
+```bash
+# Run the test suite (295 tests across 21 suites)
+npm test
 
 # Run internal benchmarks
 npm run benchmark
-
-# Run offline public benchmarks (no API key needed)
-npm run benchmark:offline
-
-# Run public benchmarks with real LLM comparison (requires API key)
-ANTHROPIC_API_KEY=sk-ant-... npm run benchmark:public
 ```
 
 ## OpenAI-Compatible Proxy Server
@@ -245,16 +291,16 @@ lm_eval --model local-chat-completions \
   --tasks gsm8k,arc_challenge,mmlu
 ```
 
-## MCP Configuration
+## Claude Desktop Configuration
 
-Add to your Claude Desktop config (`~/.claude/claude_desktop_config.json`):
+For Claude Desktop (instead of Claude Code), add to `~/.claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "reasoning-memory": {
       "command": "node",
-      "args": ["/path/to/reasoning-memory/dist/index.js"]
+      "args": ["/absolute/path/to/reasoning-experiments/dist/index.js"]
     }
   }
 }
