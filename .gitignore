@@ -1,0 +1,17 @@
+.claude/
+node_modules/
+dist/
+coverage/
+*.js.map
+*.d.ts.map
+.env
+
+# Benchmark output files
+_ul
+*.traces.json
+benchmark-traces.json
+hard-traces.json
+bench-augmented.txt
+bench-vanilla.txt
+haiku-augmented.txt
+hard-augmented-prompt.txt
