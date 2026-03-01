@@ -17,7 +17,9 @@ import {
   ProblemCategory,
   getPublicProblemsByCategory,
 } from './public-problems';
+import { ReasoningTrace } from '../trace/types';
 import { jaccardSimilarity } from '../utils/similarity';
+import { solveMath } from './math-solver';
 
 export interface OfflineResult {
   problemId: string;
@@ -250,26 +252,21 @@ function solveCodeBaseline(p: PublicBenchmarkProblem): { answer: string; method:
 
 function solveAugmented(
   problem: PublicBenchmarkProblem,
-  traceContent: string
+  trace: ReasoningTrace
 ): { answer: string; method: string } {
-  // The augmented solver uses the reasoning trace to improve its answer
-  const traceLower = traceContent.toLowerCase();
   const baseline = solveBaseline(problem);
 
-  // For math: if trace mentions specific numbers or formulas, use those
+  // For math: use the sentence-level math solver
   if (problem.category === 'math') {
-    // Check if trace decomposed the problem into clearer steps
-    const numbers = traceContent.match(/\d+/g)?.map(Number) || [];
-    // If trace identified the answer pattern, trust it
-    if (traceLower.includes('requirements') && traceLower.includes('constraints')) {
-      // FractalRecursion decomposed it — the baseline heuristic with structured thinking
-      return { ...baseline, method: `augmented-${baseline.method}` };
+    const computed = solveMath(problem.question);
+    const computedNum = parseFloat(computed.answer);
+    if (!isNaN(computedNum)) {
+      return { answer: computed.answer, method: 'math-solver' };
     }
   }
 
-  // For multiple choice: if trace discusses specific options, prefer those
+  // For multiple choice: weight trace words by step scores
   if (problem.choices && (problem.category === 'science' || problem.category === 'logic')) {
-    // Strip words from the original question so we only score on NEW reasoning content
     const questionWords = new Set(
       problem.question.toLowerCase().split(/\s+/).filter(w => w.length > 3)
     );
@@ -280,17 +277,24 @@ function solveAugmented(
       const text = choice.substring(3).toLowerCase();
       const words = text.split(/\s+/);
       let score = 0;
-      for (const word of words) {
-        // Only count words that appear in the trace but NOT in the original question
-        if (word.length > 3 && traceLower.includes(word) && !questionWords.has(word)) score++;
+
+      for (const step of trace.steps) {
+        const stepLower = step.content.toLowerCase();
+        const stepWeight = step.score > 0 ? step.score : 0.5;
+        for (const word of words) {
+          if (word.length > 3 && stepLower.includes(word) && !questionWords.has(word)) {
+            score += stepWeight;
+          }
+        }
       }
+
       choiceScores[letter] = score;
     }
 
-    const best = Object.entries(choiceScores).sort((a, b) => b[1] - a[1]);
-    // Only override baseline if the best choice has a clear lead (>= 2 points ahead)
-    if (best[0][1] > 0 && best[0][1] >= (best[1]?.[1] || 0) + 2) {
-      return { answer: best[0][0], method: 'trace-guided-choice' };
+    const sorted = Object.entries(choiceScores).sort((a, b) => b[1] - a[1]);
+    // Only override if convergence is high AND choice has a clear lead
+    if (trace.convergenceScore > 0.8 && sorted[0][1] > 0 && sorted[0][1] >= (sorted[1]?.[1] || 0) + 2) {
+      return { answer: sorted[0][0], method: 'trace-weighted-choice' };
     }
   }
 
@@ -334,8 +338,7 @@ export class OfflineBenchmarkRunner {
       maxIterations: 4,
     });
 
-    const traceText = reasoning.trace.steps.map(s => s.content).join('\n');
-    const augResult = solveAugmented(problem, traceText);
+    const augResult = solveAugmented(problem, reasoning.trace);
 
     return {
       problemId: problem.id,
